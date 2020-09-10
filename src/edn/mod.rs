@@ -130,7 +130,7 @@ impl futures::future::Future for Set {
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct Map(BTreeMap<String, Edn>);
+pub struct Map(pub BTreeMap<String, Edn>);
 impl Map {
     pub fn new(m: BTreeMap<String, Edn>) -> Map {
         Map(m)

@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use crate::edn::Error;
 use crate::edn::{Edn, List, Map, Set, Vector};
 use std::str::FromStr;
@@ -179,30 +178,19 @@ pub fn from_str<T: Deserialize>(s: &str) -> Result<T, Error> {
 use nom::{
     branch::alt,
     bytes::complete::{escaped, tag, take_while},
-    character::complete::{alphanumeric1 as alphanumeric, char, one_of},
+    character::complete::{alphanumeric1 as alphanumeric, anychar, char, one_of},
     combinator::{cut, map, opt, value},
     error::{context, ParseError},
-    multi::separated_list,
-    number::complete::double,
-    sequence::{delimited, preceded, separated_pair, terminated},
+    sequence::{delimited, preceded, terminated},
     IResult,
 };
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::str;
-
-#[derive(Debug, PartialEq)]
-pub enum JsonValue {
-    Str(String),
-    Boolean(bool),
-    Num(f64),
-    Array(Vec<JsonValue>),
-    Object(HashMap<String, JsonValue>),
-}
 
 /// parser combinators are constructed from the bottom up:
 /// first we write parsers for the smallest elements (here a space character),
 /// then we'll combine them in larger parsers
-fn sp<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
+fn space_char<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
     let chars = " \t\r\n";
 
     // nom combinators like `take_while` return a function. That function is the
@@ -226,7 +214,7 @@ fn sp<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
 /// of the input data. and there is no allocation needed. This is the main idea
 /// behind nom's performance.
 fn parse_str<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
-    escaped(alphanumeric, '\\', one_of("\"n\\"))(i)
+    escaped(anychar, '\\', one_of("\"n\\"))(i)
 }
 
 /// `tag(string)` generates a parser that recognizes the argument string.
@@ -242,11 +230,11 @@ fn parse_str<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str
 fn boolean<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, bool, E> {
     // This is a parser that returns `true` if it sees the string "true", and
     // an error otherwise
-    let parse_true = value(true, tag("true"));
+    let parse_true = value(true, tag(":true"));
 
     // This is a parser that returns `true` if it sees the string "true", and
     // an error otherwise
-    let parse_false = value(false, tag("false"));
+    let parse_false = value(false, tag(":false"));
 
     // `alt` combines the two parsers. It returns the result of the first
     // successful parser, or an error
@@ -264,219 +252,55 @@ fn boolean<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, bool,
 /// parsing the string
 /// - `context` lets you add a static string to provide more information in the
 /// error chain (to indicate which parser had an error)
-fn string<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
+fn string<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, String, E> {
     context(
         "string",
-        preceded(char('\"'), cut(terminated(parse_str, char('\"')))),
+        delimited(char('\"'), map(anychar, |a| a.to_string()), char('\"')),
     )(i)
 }
 
-/// some combinators, like `separated_list` or `many0`, will call a parser repeatedly,
-/// accumulating results in a `Vec`, until it encounters an error.
-/// If you want more control on the parser application, check out the `iterator`
-/// combinator (cf `examples/iterator.rs`)
-fn array<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Vec<JsonValue>, E> {
-    context(
-        "array",
-        preceded(
-            char('['),
-            cut(terminated(
-                separated_list(preceded(sp, char(',')), json_value),
-                preceded(sp, char(']')),
-            )),
-        ),
-    )(i)
-}
-
-fn key_value<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, (&'a str, JsonValue), E> {
-    separated_pair(
-        preceded(sp, string),
-        cut(preceded(sp, char(':'))),
-        json_value,
-    )(i)
-}
-
-fn hash<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, HashMap<String, JsonValue>, E> {
-    context(
-        "map",
-        preceded(
-            char('{'),
-            cut(terminated(
-                map(
-                    separated_list(preceded(sp, char(',')), key_value),
-                    |tuple_vec| {
-                        tuple_vec
-                            .into_iter()
-                            .map(|(k, v)| (String::from(k), v))
-                            .collect()
-                    },
-                ),
-                preceded(sp, char('}')),
-            )),
-        ),
-    )(i)
-}
-
-/// here, we apply the space parser before trying to parse a value
-fn json_value<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, JsonValue, E> {
-    preceded(
-        sp,
-        alt((
-            map(hash, JsonValue::Object),
-            map(array, JsonValue::Array),
-            map(string, |s| JsonValue::Str(String::from(s))),
-            map(double, JsonValue::Num),
-            map(boolean, JsonValue::Boolean),
-        )),
-    )(i)
-}
-
-/// the root element of a JSON parser is either an object or an array
-fn root<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, JsonValue, E> {
+#[allow(dead_code)]
+pub fn root<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Edn, E> {
     delimited(
-        sp,
-        alt((map(hash, JsonValue::Object), map(array, JsonValue::Array))),
-        opt(sp),
+        space_char,
+        alt((
+            map(string, |s| Edn::Str(String::from(s))),
+            map(boolean, Edn::Bool),
+        )),
+        opt(space_char),
     )(i)
 }
 
 #[test]
-fn new_parser() {
-    use nom::error::{convert_error, ErrorKind, VerboseError};
+fn pc_bool() {
+    use nom::error::ErrorKind;
+    let data = " :true   ";
+    let (_, edn) = root::<(&str, ErrorKind)>(data).unwrap();
+    assert_eq!(edn, Edn::Bool(true));
+
+    let data = " \n\n:false   ";
+    let (_, edn) = root::<(&str, ErrorKind)>(data).unwrap();
+    assert_eq!(edn, Edn::Bool(false));
+}
+
+#[test]
+fn pc_str() {
+    // use nom::error::ErrorKind;
+
+    // let data = " \"a cool string bro\"   ";
+    // let (_, edn) = root::<(&str, ErrorKind)>(data).unwrap();
+    // assert_eq!(edn, Edn::Str("a cool string bro".to_string()));
+
+    let data = "\"acoolstringbro\"";
+    // let (_, edn) = root::<(&str, ErrorKind)>(data).unwrap();
+    // assert_eq!(edn, Edn::Str("acoolstringbro".to_string()));
+
+    use nom::error::{context, convert_error, ErrorKind, ParseError, VerboseError};
     use nom::Err;
-    let data = "  { \"a\"\t: 42,
-  \"b\": [ \"x\", \"y\", 12 ] ,
-  \"c\": { \"hello\" : \"world\"
-  }
-  } ";
-
-    println!(
-        "will try to parse valid EDN data:\n\n**********\n{}\n**********\n",
-        data
-    );
-
-    // this will print:
-    // Ok(
-    //     (
-    //         "",
-    //         Object(
-    //             {
-    //                 "b": Array(
-    //                     [
-    //                         Str(
-    //                             "x",
-    //                         ),
-    //                         Str(
-    //                             "y",
-    //                         ),
-    //                         Num(
-    //                             12.0,
-    //                         ),
-    //                     ],
-    //                 ),
-    //                 "c": Object(
-    //                     {
-    //                         "hello": Str(
-    //                             "world",
-    //                         ),
-    //                     },
-    //                 ),
-    //                 "a": Num(
-    //                     42.0,
-    //                 ),
-    //             },
-    //         ),
-    //     ),
-    // )
-    println!(
-        "parsing a valid file:\n{:#?}\n",
-        root::<(&str, ErrorKind)>(data)
-    );
-
-    let data = "  { \"a\"\t: 42,
-  \"b\": [ \"x\", \"y\", 12 ] ,
-  \"c\": { 1\"hello\" : \"world\"
-  }
-  } ";
-
-    println!(
-        "will try to parse invalid EDN data:\n\n**********\n{}\n**********\n",
-        data
-    );
-
-    // here we use `(Input, ErrorKind)` as error type, which is used by default
-    // if you don't specify it. It contains the position of the error and some
-    // info on which parser encountered it.
-    // It is fast and small, but does not provide much context.
-    //
-    // This will print:
-    // basic errors - `root::<(&str, ErrorKind)>(data)`:
-    // Err(
-    //   Failure(
-    //       (
-    //           "1\"hello\" : \"world\"\n  }\n  } ",
-    //           Char,
-    //       ),
-    //   ),
-    // )
-    println!(
-        "basic errors - `root::<(&str, ErrorKind)>(data)`:\n{:#?}\n",
-        root::<(&str, ErrorKind)>(data)
-    );
-
-    // nom also provides `the `VerboseError<Input>` type, which will generate a sort
-    // of backtrace of the path through the parser, accumulating info on input positions
-    // and affected parsers.
-    //
-    // This will print:
-    //
-    // parsed verbose: Err(
-    //   Failure(
-    //       VerboseError {
-    //           errors: [
-    //               (
-    //                   "1\"hello\" : \"world\"\n  }\n  } ",
-    //                   Char(
-    //                       '}',
-    //                   ),
-    //               ),
-    //               (
-    //                   "{ 1\"hello\" : \"world\"\n  }\n  } ",
-    //                   Context(
-    //                       "map",
-    //                   ),
-    //               ),
-    //               (
-    //                   "{ \"a\"\t: 42,\n  \"b\": [ \"x\", \"y\", 12 ] ,\n  \"c\": { 1\"hello\" : \"world\"\n  }\n  } ",
-    //                   Context(
-    //                       "map",
-    //                   ),
-    //               ),
-    //           ],
-    //       },
-    //   ),
-    // )
     println!("parsed verbose: {:#?}", root::<VerboseError<&str>>(data));
 
     match root::<VerboseError<&str>>(data) {
         Err(Err::Error(e)) | Err(Err::Failure(e)) => {
-            // here we use the `convert_error` function, to transform a `VerboseError<&str>`
-            // into a printable trace.
-            //
-            // This will print:
-            // verbose errors - `root::<VerboseError>(data)`:
-            // 0: at line 2:
-            //   "c": { 1"hello" : "world"
-            //          ^
-            // expected '}', found 1
-            //
-            // 1: at line 2, in map:
-            //   "c": { 1"hello" : "world"
-            //        ^
-            //
-            // 2: at line 0, in map:
-            //   { "a" : 42,
-            //   ^
             println!(
                 "verbose errors - `root::<VerboseError>(data)`:\n{}",
                 convert_error(data, e)
@@ -574,7 +398,6 @@ fn read_set<'a>(tokens: &'a [String]) -> Result<(Edn, &'a [String]), Error> {
 }
 
 fn read_map<'a>(tokens: &'a [String]) -> Result<(Edn, &'a [String]), Error> {
-    use std::collections::BTreeMap;
     let mut res = BTreeMap::new();
     let mut xs = tokens;
     loop {
