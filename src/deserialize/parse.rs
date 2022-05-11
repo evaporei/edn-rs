@@ -111,7 +111,7 @@ fn read_symbol(a: char, chars: &mut std::iter::Enumerate<std::str::Chars>) -> Re
 
     if a.is_whitespace() {
         return Err(Error::ParseEdn(format!(
-            "\"{}\" could not be parsed at char count {}",
+            "1\"{}\" could not be parsed at char count {}",
             a, i
         )));
     }
@@ -228,7 +228,7 @@ fn read_number(n: char, chars: &mut std::iter::Enumerate<std::str::Chars>) -> Re
             Ok(Edn::Rational(n))
         }
         _ => Err(Error::ParseEdn(format!(
-            "{} could not be parsed at char count {}",
+            "2 {} could not be parsed at char count {}",
             number, i
         ))),
     }
@@ -241,7 +241,7 @@ fn read_char(chars: &mut std::iter::Enumerate<std::str::Chars>) -> Result<Edn, E
         .ok_or_else(|| Error::ParseEdn("Could not identify symbol index".to_string()))?
         .0;
     let c = chars.next();
-    c.ok_or(format!("{:?} could not be parsed at char count {}", c, i))
+    c.ok_or(format!("3 {:?} could not be parsed at char count {}", c, i))
         .map(|c| c.1)
         .map(Edn::Char)
         .map_err(Error::ParseEdn)
@@ -306,7 +306,7 @@ fn read_bool_or_nil(
             match &string[..] {
                 "nil" => Ok(Edn::Nil),
                 _ => Err(Error::ParseEdn(format!(
-                    "{} could not be parsed at char count {}",
+                    "4 {} could not be parsed at char count {}",
                     string, i
                 ))),
             }
@@ -331,7 +331,7 @@ fn read_vec(chars: &mut std::iter::Enumerate<std::str::Chars>) -> Result<Edn, Er
             Some(c) if c.1.is_whitespace() || c.1 == ',' => (),
             err => {
                 return Err(Error::ParseEdn(format!(
-                    "{:?} could not be parsed at char count {}",
+                    "5 {:?} could not be parsed at char count {}",
                     err, i
                 )))
             }
@@ -355,7 +355,7 @@ fn read_list(chars: &mut std::iter::Enumerate<std::str::Chars>) -> Result<Edn, E
             Some(c) if c.1.is_whitespace() || c.1 == ',' => (),
             err => {
                 return Err(Error::ParseEdn(format!(
-                    "{:?} could not be parsed at char count {}",
+                    "6 {:?} could not be parsed at char count {}",
                     err, i
                 )))
             }
@@ -380,7 +380,7 @@ fn read_set(chars: &mut std::iter::Enumerate<std::str::Chars>) -> Result<Edn, Er
             Some(c) if c.1.is_whitespace() || c.1 == ',' => (),
             err => {
                 return Err(Error::ParseEdn(format!(
-                    "{:?} could not be parsed at char count {}",
+                    "7 {:?} could not be parsed at char count {}",
                     err, i
                 )))
             }
@@ -416,7 +416,7 @@ fn read_namespaced_map(chars: &mut std::iter::Enumerate<std::str::Chars>) -> Res
             Some(c) if c.1.is_whitespace() || c.1 == ',' => (),
             err => {
                 return Err(Error::ParseEdn(format!(
-                    "{:?} could not be parsed at char count {}",
+                    "8 {:?} could not be parsed at char count {}",
                     err, i
                 )))
             }
@@ -453,7 +453,7 @@ fn read_map(chars: &mut std::iter::Enumerate<std::str::Chars>) -> Result<Edn, Er
             Some(c) if c.1.is_whitespace() || c.1 == ',' => (),
             err => {
                 return Err(Error::ParseEdn(format!(
-                    "{:?} could not be parsed at char count {}",
+                    "9 {:?} could not be parsed at char count {}",
                     err, i
                 )))
             }
